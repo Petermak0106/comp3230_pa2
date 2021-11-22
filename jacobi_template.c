@@ -44,7 +44,7 @@ struct room {
 	int N;
 };
 sem_t diff_empty, diff_full, diff_mutex, sig_empty, sig_full, sig_mutex;
-bool sig;
+bool sig = false;
 int thr_finish_count;
 /**************************************************************/
 
@@ -166,6 +166,9 @@ void print_solution (char *filename, double **u)
 void *thr_func(void *arg) {
 
 // (2) Add the worker's logic here
+    struct rusage usage;
+
+    //Identify which set of rows to compute
 	room *rm = arg;
 	int mi = rm->Mi;
 	int mj = rm->Mj;
@@ -176,14 +179,16 @@ void *thr_func(void *arg) {
 
 	for (its = 1; its < max_its; its++) {
 		diff = 0.0;
+        //Compute the temp of all points in its set
 		for (int i = mi; i <= mj; i++) {
 			for (int j = 1; j < n-1; j++) {
 				w[i][j] = 0.25 * (u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1]);
+                //Find the max temp diff in this set
 				diff = MAX(fabs(w[i][j] - u[i][j]), diff);
 			}
-		}
+        }
 
-		//produce final_diff
+		//Signal master that to test the diff
 		sem_wait(&diff_empty);
 		sem_wait(&diff_mutex);
 		final_diff = diff;
@@ -204,9 +209,12 @@ void *thr_func(void *arg) {
 		}
 	}
 	
-	int *rtn = malloc(sizeof(int));
-    *rtn = its;
-	pthread_exit(rtn);
+    //Get its running statistics and pass it to master
+    getrusage(RUSAGE_SELF, &usage);
+    struct rusage *rtn = malloc(sizeof(struct rusage));
+    *rtn = usage;
+    //terminate
+    pthread_exit(rtn);
 }
 
 
@@ -214,6 +222,8 @@ int find_steady_state (void)
 {
 
 // (3) Implement the thread creation and the main control logic here
+    struct rusage master_usage, *thr_usage;
+
 	sem_init(&diff_empty, 0, 1);
 	sem_init(&diff_full, 0, 0);
 	sem_init(&diff_mutex, 0, 1);
@@ -221,6 +231,10 @@ int find_steady_state (void)
 	sem_init(&sig_full, 0, 0);
 	sem_init(&sig_mutex, 0, 1);
 
+    double **temp;
+    int temp_count;
+    void *retval;
+    double diff = 0.0;
 	int thr_m[thr_count];
 	int sum = 0;
 	int div = (M-1) / thr_count;
@@ -235,6 +249,7 @@ int find_steady_state (void)
 		}
 	}
 
+    //Create N workers; each with a set of rows
 	pthread_t thread[thr_count];
 	for (int i = 0; i < thr_count; i++) {
 		room *rm = malloc(sizeof(room));
@@ -255,6 +270,15 @@ int find_steady_state (void)
 		sem_wait(&diff_mutex);
 		sem_wait(&sig_empty);
 		sem_wait(&sig_mutex);
+
+        //swap u, w
+        temp = u;
+        u = w;
+        w = temp;
+
+        temp_count++;
+
+        //check final_diff against EPSILON
 		if (final_diff <= EPSILON) {
 			sig = false;
 			thr_finish_count++;
@@ -264,18 +288,35 @@ int find_steady_state (void)
 		}
 		sem_post(&sig_mutex);
 		sem_post(&sig_full);
+        diff = final_diff;
 		final_diff = 0.0;
 		sem_post(&diff_mutex);
 		sem_post(&diff_empty);
 	}
 	
+    /*
 	void *retval;
 	int sum_its = 0;
 	for (int j = 0; j < thr_count; j++) {
 		pthread_join(thread[j], &retval);
 		sum_its += (int)retval;
 	}
+    */
 
-	return sum_its;
+    for (int j = 0; j < thr_count; j++) {
+        pthread_join(thread[j], &retval);
+        thr_usage = (struct rusage*)retval;
+        printf("Thread %d has completed - user: %.4f s, system: %.4f s\n", j,
+        (thr_usage->ru_utime.tv_sec + thr_usage->ru_utime.tv_usec/1000000.0),
+        (thr_usage->ru_stime.tv_sec + thr_usage->ru_stime.tv_usec/1000000.0));
+    }
+    
+    getrusage(RUSAGE_SELF, &master_usage);
+    printf("find_stedy_state - user: %.4f s, system: %.4f s\n",
+        (master_usage.ru_utime.tv_sec + master_usage.ru_utime.tv_usec/1000000.0),
+        (master_usage.ru_stime.tv_sec + master_usage.ru_stime.tv_usec/1000000.0));
 
+    final_diff = diff;
+
+    return temp_count;
 }
