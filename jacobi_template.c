@@ -176,35 +176,36 @@ void *thr_func(void *arg) {
 
 	for (its = 1; its < max_its; its++) {
 		diff = 0.0;
-		for (int i = mi, i <= mj; i++) {
-			for (int j = 1; j < N-1; j++) {
-				(*w)[i][j] = 0.25 * ((*u)[i-1][j] + (*u)[i+1][j] + (*u)[i][j-1] + (*u)[i][j+1]);
-				diff = MAX(fabs(w[i][j], u[i][j]), diff);
+		for (int i = mi; i <= mj; i++) {
+			for (int j = 1; j < n-1; j++) {
+				w[i][j] = 0.25 * (u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1]);
+				diff = MAX(fabs(w[i][j] - u[i][j]), diff);
 			}
 		}
 
 		//produce final_diff
-		sem_wait(diff_empty);
-		sem_wait(diff_mutex);
+		sem_wait(&diff_empty);
+		sem_wait(&diff_mutex);
 		final_diff = diff;
-		sem_psot(diff_mutex);
-		sem_post(diff_full);
+		sem_post(&diff_mutex);
+		sem_post(&diff_full);
 
 		//consume wake_sig
 		bool wake;
-		sem_wait(wake_sig_full);
-		sem_wait(wake_sig_mutex);
-		wake = wake_sig;
-		wake_sig = false;
-		sem_post(wake_sig_mutex);
-		sem_post(wake_sig_empty);
+		sem_wait(&sig_full);
+		sem_wait(&sig_mutex);
+		wake = sig;
+		sig = false;
+		sem_post(&sig_mutex);
+		sem_post(&sig_empty);
 
 		if (!wake) {
 			break;
 		}
 	}
 	
-	int *rtn = its;
+	int *rtn = malloc(sizeof(int));
+    *rtn = its;
 	pthread_exit(rtn);
 }
 
@@ -213,19 +214,19 @@ int find_steady_state (void)
 {
 
 // (3) Implement the thread creation and the main control logic here
-	sem_init(diff_empty, 0, 1);
-	sem_init(diff_full, 0, 0);
-	sem_init(diff_mutex, 0, 1);
-	sem_init(sig_empty, 0, 1);
-	sem_init(sig_full, 0, 0);
-	sem_init(sig_mutex, 0, 1);
+	sem_init(&diff_empty, 0, 1);
+	sem_init(&diff_full, 0, 0);
+	sem_init(&diff_mutex, 0, 1);
+	sem_init(&sig_empty, 0, 1);
+	sem_init(&sig_full, 0, 0);
+	sem_init(&sig_mutex, 0, 1);
 
 	int thr_m[thr_count];
 	int sum = 0;
 	int div = (M-1) / thr_count;
 	int rmd = (M-1) % thr_count;
 	for (int i = 0; i < thr_count; i++) {
-		if (rmd = 0) {
+		if (rmd == 0) {
 			thr_m[i] = div + 1;
 			rmd--;
 		}
@@ -238,7 +239,7 @@ int find_steady_state (void)
 	for (int i = 0; i < thr_count; i++) {
 		room *rm = malloc(sizeof(room));
 		rm->Mi = sum + 1;
-		rm->Nj = thr_m[i] + sum;
+		rm->Mj = thr_m[i] + sum;
 		sum += thr_m[i];
 		rm->N = N;
 		int s = pthread_create(&thread[i], NULL, thr_func, (void*) rm);
@@ -250,29 +251,29 @@ int find_steady_state (void)
 	
 	while (thr_finish_count < thr_count) {
 		//consume final_diff and produce wake_sig
-		sem_wait(diff_full);
-		sem_wait(diff_mutex);
-		sem_wait(sig_empty);
-		sem_wait(sig_mutex);
-		if (final_diff <= EPPSILON) {
+		sem_wait(&diff_full);
+		sem_wait(&diff_mutex);
+		sem_wait(&sig_empty);
+		sem_wait(&sig_mutex);
+		if (final_diff <= EPSILON) {
 			sig = false;
 			thr_finish_count++;
 		}
 		else {
 			sig = true;
 		}
-		sem_post(sig_mutex);
-		sem_post(sig_full);
+		sem_post(&sig_mutex);
+		sem_post(&sig_full);
 		final_diff = 0.0;
-		sem_post(diff_mutex);
-		sem_post(diff_empty);
+		sem_post(&diff_mutex);
+		sem_post(&diff_empty);
 	}
 	
-	int retval;
-	int sum = 0;
+	void *retval;
+	int sum_its = 0;
 	for (int j = 0; j < thr_count; j++) {
 		pthread_join(thread[j], &retval);
-		sum_its += retval;
+		sum_its += (int)retval;
 	}
 
 	return sum_its;
