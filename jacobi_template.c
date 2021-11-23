@@ -235,6 +235,7 @@ int find_steady_state (void)
     int temp_count;
     void *retval;
     double diff = 0.0;
+    bool signal = false;
 	int thr_m[thr_count];
 	int sum = 0;
 	int div = (M-1) / thr_count;
@@ -268,30 +269,28 @@ int find_steady_state (void)
 		//consume final_diff and produce wake_sig
 		sem_wait(&diff_full);
 		sem_wait(&diff_mutex);
-		sem_wait(&sig_empty);
-		sem_wait(&sig_mutex);
-
-        //swap u, w
+        diff = final_diff;
         temp = u;
         u = w;
         w = temp;
-
         temp_count++;
+        sem_post(&diff_mutex);
+		sem_post(&diff_empty);
 
         //check final_diff against EPSILON
-		if (final_diff <= EPSILON) {
-			sig = false;
+		if (diff <= EPSILON) {
+			signal = false;
 			thr_finish_count++;
 		}
 		else {
-			sig = true;
+			signal = true;
 		}
+
+        sem_wait(&sig_empty);
+		sem_wait(&sig_mutex);
+        sig = signal;
 		sem_post(&sig_mutex);
 		sem_post(&sig_full);
-        diff = final_diff;
-		final_diff = 0.0;
-		sem_post(&diff_mutex);
-		sem_post(&diff_empty);
 	}
 	
     /*
