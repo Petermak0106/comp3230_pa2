@@ -185,9 +185,9 @@ void *thr_func(void *arg) {
         //Compute the temp of all points in its set
 		for (int i = mi; i <= mj; i++) {
 			for (int j = 1; j < n-1; j++) {
-				w[i][j] = 0.25 * (u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1]);
-                //Find the max temp diff in this set
-				diff = MAX(fabs(w[i][j] - u[i][j]), diff);
+				(w)[i][j] = 0.25 * ((u)[i-1][j] + (u)[i+1][j] + (u)[i][j-1] + (u)[i][j+1]);
+                if (fabs((w)[i][j] - (u)[i][j]) > diff)
+                    diff = fabs((w)[i][j] - (u)[i][j]);
 			}
         }
 
@@ -252,10 +252,10 @@ int find_steady_state (void)
     bool signal = false;
 	int thr_m[thr_count];
 	int sum = 0;
-	int div = (M-1) / thr_count;
-	int rmd = (M-1) % thr_count;
+	int div = (M-2) / thr_count;
+	int rmd = (M-2) % thr_count;
 	for (int i = 0; i < thr_count; i++) {
-		if (rmd == 0) {
+		if (rmd > 0) {
 			thr_m[i] = div + 1;
 			rmd--;
 		}
