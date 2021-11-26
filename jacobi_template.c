@@ -43,9 +43,11 @@ struct room {
 	int Mj;
 	int N;
 };
-sem_t diff_empty, diff_full, diff_mutex, sig_empty, sig_full, sig_mutex;
+sem_t diff_mutex, sig_wrt, sig_read;
+int diff_i = 0;
 bool sig = false;
-int thr_finish_count;
+int sig_readcnt = 0;
+bool finish;
 /**************************************************************/
 
 int main (int argc, char *argv[])
@@ -176,6 +178,7 @@ void *thr_func(void *arg) {
 
 	double diff;
 	int its;
+    bool wake;
 
 	for (its = 1; its < max_its; its++) {
 		diff = 0.0;
@@ -188,21 +191,34 @@ void *thr_func(void *arg) {
 			}
         }
 
-		//Signal master that to test the diff
+		//write to diff
+        sem_wait(&diff_mutex);
+        final_diff = MAX(final_diff, diff);
+        diff_i++;
+        //printf("diff_i = %d, final_diff = %f\n", diff_i, final_diff);
+        sem_post(&diff_mutex);
+
+        /*
 		sem_wait(&diff_empty);
 		sem_wait(&diff_mutex);
 		final_diff = diff;
 		sem_post(&diff_mutex);
 		sem_post(&diff_full);
+        */
 
+        /*
 		//consume wake_sig
 		bool wake;
 		sem_wait(&sig_full);
 		sem_wait(&sig_mutex);
 		wake = sig;
-		sig = false;
+        sig = false;
 		sem_post(&sig_mutex);
 		sem_post(&sig_empty);
+        */
+
+        sem_wait(&sig_read);
+        wake = sig;
 
 		if (!wake) {
 			break;
@@ -224,16 +240,14 @@ int find_steady_state (void)
 // (3) Implement the thread creation and the main control logic here
     struct rusage master_usage, *thr_usage;
 
-	sem_init(&diff_empty, 0, 1);
-	sem_init(&diff_full, 0, 0);
 	sem_init(&diff_mutex, 0, 1);
-	sem_init(&sig_empty, 0, 1);
-	sem_init(&sig_full, 0, 0);
-	sem_init(&sig_mutex, 0, 1);
+	sem_init(&sig_wrt, 0, 1);
+	sem_init(&sig_read, 0, 0);
 
     double **temp;
     int temp_count;
     void *retval;
+    
     double diff = 0.0;
     bool signal = false;
 	int thr_m[thr_count];
@@ -265,7 +279,8 @@ int find_steady_state (void)
 		}
 	}
 	
-	while (thr_finish_count < thr_count) {
+	while (!finish) {
+        /*
 		//consume final_diff and produce wake_sig
 		sem_wait(&diff_full);
 		sem_wait(&diff_mutex);
@@ -276,21 +291,37 @@ int find_steady_state (void)
         temp_count++;
         sem_post(&diff_mutex);
 		sem_post(&diff_empty);
+        */
+        if (diff_i == thr_count) {
+            diff_i = 0;
 
-        //check final_diff against EPSILON
-		if (diff <= EPSILON) {
-			signal = false;
-			thr_finish_count++;
-		}
-		else {
-			signal = true;
-		}
+            sem_wait(&diff_mutex);
+            //printf("final_diff = %f\n", final_diff);
+            temp = u;
+            u = w;
+            w = temp;
+            temp_count++;
+            diff = final_diff;
+            final_diff = 0.0;
+            sem_post(&diff_mutex);
 
-        sem_wait(&sig_empty);
-		sem_wait(&sig_mutex);
-        sig = signal;
-		sem_post(&sig_mutex);
-		sem_post(&sig_full);
+            //check final_diff against EPSILON
+            if (diff <= EPSILON) {
+                signal = false;
+                finish = true;
+            }
+            else {
+                signal = true;
+            }
+
+            sem_wait(&sig_wrt);
+            sig = signal;
+            sem_post(&sig_wrt);
+
+            for (int i = 0; i < thr_count; i++) {
+                sem_post(&sig_read);
+            }
+        }
 	}
 	
     /*
@@ -314,8 +345,6 @@ int find_steady_state (void)
     printf("find_stedy_state - user: %.4f s, system: %.4f s\n",
         (master_usage.ru_utime.tv_sec + master_usage.ru_utime.tv_usec/1000000.0),
         (master_usage.ru_stime.tv_sec + master_usage.ru_stime.tv_usec/1000000.0));
-
-    final_diff = diff;
 
     return temp_count;
 }
