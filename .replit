@@ -1,0 +1,2 @@
+language = "c"
+run = "gcc jacobi_sema_3035685914.c -o main -pthread"

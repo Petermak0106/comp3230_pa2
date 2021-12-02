@@ -1,4 +1,10 @@
-
+/* 
+// filename: jacobi_sema_3035685914.c
+// student name: Mak Tsz Shing
+// student number: 3035685914
+// development platform: vi editor via workbench2
+// remark: 
+*/
 #define _GNU_SOURCE
 
 #include <stdlib.h>
@@ -195,27 +201,7 @@ void *thr_func(void *arg) {
         sem_wait(&diff_mutex);
         final_diff = MAX(final_diff, diff);
         diff_i++;
-        //printf("diff_i = %d, final_diff = %f\n", diff_i, final_diff);
         sem_post(&diff_mutex);
-
-        /*
-		sem_wait(&diff_empty);
-		sem_wait(&diff_mutex);
-		final_diff = diff;
-		sem_post(&diff_mutex);
-		sem_post(&diff_full);
-        */
-
-        /*
-		//consume wake_sig
-		bool wake;
-		sem_wait(&sig_full);
-		sem_wait(&sig_mutex);
-		wake = sig;
-        sig = false;
-		sem_post(&sig_mutex);
-		sem_post(&sig_empty);
-        */
 
         sem_wait(&sig_read);
         wake = sig;
@@ -280,18 +266,6 @@ int find_steady_state (void)
 	}
 	
 	while (!finish) {
-        /*
-		//consume final_diff and produce wake_sig
-		sem_wait(&diff_full);
-		sem_wait(&diff_mutex);
-        diff = final_diff;
-        temp = u;
-        u = w;
-        w = temp;
-        temp_count++;
-        sem_post(&diff_mutex);
-		sem_post(&diff_empty);
-        */
         if (diff_i == thr_count) {
             diff_i = 0;
 
@@ -322,17 +296,7 @@ int find_steady_state (void)
                 sem_post(&sig_read);
             }
         }
-	}
-	
-    /*
-	void *retval;
-	int sum_its = 0;
-	for (int j = 0; j < thr_count; j++) {
-		pthread_join(thread[j], &retval);
-		sum_its += (int)retval;
-	}
-    */
-
+    }
     for (int j = 0; j < thr_count; j++) {
         pthread_join(thread[j], &retval);
         thr_usage = (struct rusage*)retval;
